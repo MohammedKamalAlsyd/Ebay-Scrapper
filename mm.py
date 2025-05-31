@@ -23,8 +23,6 @@ class MainSpider(scrapy.Spider):
 
 
     def start_requests(self):  # Changed to synchronous for simplicity
-
-        
         for keyword in self.base_keywords:
             if self.use_suggestions_setting and self.suggestion_url_template:
                 suggestion_params = self.suggestion_base_params.copy()
@@ -49,149 +47,149 @@ class MainSpider(scrapy.Spider):
                 }
                 yield self._make_request(full_search_url, callback=self.parse_search_results, meta=request_meta)
 
-    def parse_suggestions(self, response):
-        original_keyword = response.meta['original_keyword']
-        self.logger.info(f"Received suggestions for '{original_keyword}' from {response.url}")
+    # def parse_suggestions(self, response):
+    #     original_keyword = response.meta['original_keyword']
+    #     self.logger.info(f"Received suggestions for '{original_keyword}' from {response.url}")
         
-        try:
-            response_text = response.text
-            callback_name = self.suggestion_base_params.get("callback", "0")
-            if callback_name and response_text.startswith(callback_name + "(") and response_text.endswith(")"):
-                response_text = response_text[len(callback_name)+1:-1]
-            data = json.loads(response_text)
-        except json.JSONDecodeError:
-            self.logger.error(f"Failed to decode JSON from suggestion response for '{original_keyword}'. Body: {response.text[:300]}")
-            search_params = self.search_params_template.copy()
-            search_params['_nkw'] = original_keyword
-            search_params['_sacat'] = self.default_category_id_config
-            search_params['_pgn'] = 1
-            full_search_url = f"{self.search_base_url_template}?{urlencode(search_params)}"
-            request_meta = {
-                'source_keyword': original_keyword,
-                'current_keyword': original_keyword,
-                'category_id': search_params['_sacat'],
-                'search_page_number': 1,
-                'search_url_template': self.search_base_url_template
-            }
-            yield self._make_request(full_search_url, callback=self.parse_search_results, meta=request_meta)
-            return
+    #     try:
+    #         response_text = response.text
+    #         callback_name = self.suggestion_base_params.get("callback", "0")
+    #         if callback_name and response_text.startswith(callback_name + "(") and response_text.endswith(")"):
+    #             response_text = response_text[len(callback_name)+1:-1]
+    #         data = json.loads(response_text)
+    #     except json.JSONDecodeError:
+    #         self.logger.error(f"Failed to decode JSON from suggestion response for '{original_keyword}'. Body: {response.text[:300]}")
+    #         search_params = self.search_params_template.copy()
+    #         search_params['_nkw'] = original_keyword
+    #         search_params['_sacat'] = self.default_category_id_config
+    #         search_params['_pgn'] = 1
+    #         full_search_url = f"{self.search_base_url_template}?{urlencode(search_params)}"
+    #         request_meta = {
+    #             'source_keyword': original_keyword,
+    #             'current_keyword': original_keyword,
+    #             'category_id': search_params['_sacat'],
+    #             'search_page_number': 1,
+    #             'search_url_template': self.search_base_url_template
+    #         }
+    #         yield self._make_request(full_search_url, callback=self.parse_search_results, meta=request_meta)
+    #         return
         
-        processed_suggestions = False
-        suggestions_sources = [
-            data.get("richRes", {}).get("sug", []),
-            data.get("rcser", {}).get("sug", []),
-            data.get("sug", [])
-        ]
+    #     processed_suggestions = False
+    #     suggestions_sources = [
+    #         data.get("richRes", {}).get("sug", []),
+    #         data.get("rcser", {}).get("sug", []),
+    #         data.get("sug", [])
+    #     ]
         
-        for sug_list in suggestions_sources:
-            if sug_list and isinstance(sug_list, list):
-                processed_suggestions = True
-                self.logger.info(f"Processing suggestions for '{original_keyword}' from list of size {len(sug_list)}")
-                for sug_item in sug_list:
-                    if not isinstance(sug_item, dict):
-                        continue
-                    kwd = sug_item.get("kwd")
-                    cat_id_to_use = self.default_category_id_config
-                    category_info = sug_item.get("category", [])
-                    if isinstance(category_info, list) and category_info and category_info[0]:
-                        cat_id_to_use = str(category_info[0])
-                    if kwd:
-                        self.logger.info(f" Suggested keyword: '{kwd}', Category ID: '{cat_id_to_use}'")
-                        search_params = self.search_params_template.copy()
-                        search_params['_nkw'] = kwd
-                        search_params['_sacat'] = cat_id_to_use
-                        search_params['_pgn'] = 1
-                        full_search_url = f"{self.search_base_url_template}?{urlencode(search_params)}"
-                        request_meta = {
-                            'source_keyword': original_keyword,
-                            'current_keyword': kwd,
-                            'category_id': cat_id_to_use,
-                            'search_page_number': 1,
-                            'search_url_template': self.search_base_url_template
-                        }
-                        yield self._make_request(full_search_url, callback=self.parse_search_results, meta=request_meta)
-                break
-        if not processed_suggestions:
-            self.logger.warning(f"No valid suggestions for '{original_keyword}'. Using original keyword.")
-            search_params = self.search_params_template.copy()
-            search_params['_nkw'] = original_keyword
-            search_params['_sacat'] = self.default_category_id_config
-            search_params['_pgn'] = 1
-            full_search_url = f"{self.search_base_url_template}?{urlencode(search_params)}"
-            request_meta = {
-                'source_keyword': original_keyword,
-                'current_keyword': original_keyword,
-                'category_id': search_params['_sacat'],
-                'search_page_number': 1,
-                'search_url_template': self.search_base_url_template
-            }
-            yield self._make_request(full_search_url, callback=self.parse_search_results, meta=request_meta)
+    #     for sug_list in suggestions_sources:
+    #         if sug_list and isinstance(sug_list, list):
+    #             processed_suggestions = True
+    #             self.logger.info(f"Processing suggestions for '{original_keyword}' from list of size {len(sug_list)}")
+    #             for sug_item in sug_list:
+    #                 if not isinstance(sug_item, dict):
+    #                     continue
+    #                 kwd = sug_item.get("kwd")
+    #                 cat_id_to_use = self.default_category_id_config
+    #                 category_info = sug_item.get("category", [])
+    #                 if isinstance(category_info, list) and category_info and category_info[0]:
+    #                     cat_id_to_use = str(category_info[0])
+    #                 if kwd:
+    #                     self.logger.info(f" Suggested keyword: '{kwd}', Category ID: '{cat_id_to_use}'")
+    #                     search_params = self.search_params_template.copy()
+    #                     search_params['_nkw'] = kwd
+    #                     search_params['_sacat'] = cat_id_to_use
+    #                     search_params['_pgn'] = 1
+    #                     full_search_url = f"{self.search_base_url_template}?{urlencode(search_params)}"
+    #                     request_meta = {
+    #                         'source_keyword': original_keyword,
+    #                         'current_keyword': kwd,
+    #                         'category_id': cat_id_to_use,
+    #                         'search_page_number': 1,
+    #                         'search_url_template': self.search_base_url_template
+    #                     }
+    #                     yield self._make_request(full_search_url, callback=self.parse_search_results, meta=request_meta)
+    #             break
+    #     if not processed_suggestions:
+    #         self.logger.warning(f"No valid suggestions for '{original_keyword}'. Using original keyword.")
+    #         search_params = self.search_params_template.copy()
+    #         search_params['_nkw'] = original_keyword
+    #         search_params['_sacat'] = self.default_category_id_config
+    #         search_params['_pgn'] = 1
+    #         full_search_url = f"{self.search_base_url_template}?{urlencode(search_params)}"
+    #         request_meta = {
+    #             'source_keyword': original_keyword,
+    #             'current_keyword': original_keyword,
+    #             'category_id': search_params['_sacat'],
+    #             'search_page_number': 1,
+    #             'search_url_template': self.search_base_url_template
+    #         }
+    #         yield self._make_request(full_search_url, callback=self.parse_search_results, meta=request_meta)
 
-    def parse_search_results(self, response):
-        source_keyword = response.meta['source_keyword']
-        current_keyword = response.meta['current_keyword']
-        category_id = response.meta['category_id']
-        current_page_num = response.meta['search_page_number']
+    # def parse_search_results(self, response):
+    #     source_keyword = response.meta['source_keyword']
+    #     current_keyword = response.meta['current_keyword']
+    #     category_id = response.meta['category_id']
+    #     current_page_num = response.meta['search_page_number']
         
-        if source_keyword != current_keyword:
-            display_keyword_log = f"{current_keyword} (source: {source_keyword})"
-        else:
-            display_keyword_log = current_keyword
+    #     if source_keyword != current_keyword:
+    #         display_keyword_log = f"{current_keyword} (source: {source_keyword})"
+    #     else:
+    #         display_keyword_log = current_keyword
         
-        self.logger.info(f"Parsing search results for '{display_keyword_log}', Category: '{category_id}', Page: {current_page_num} from {response.url}")
+    #     self.logger.info(f"Parsing search results for '{display_keyword_log}', Category: '{category_id}', Page: {current_page_num} from {response.url}")
         
-        total_results_text = response.css('div.srp-controls__count h1.srp-controls__count-heading span.BOLD:first-child::text').get()
-        total_results = int(total_results_text.strip()) if total_results_text else 0
-        self.logger.info(f"Total results reported: {total_results}")
+    #     total_results_text = response.css('div.srp-controls__count h1.srp-controls__count-heading span.BOLD:first-child::text').get()
+    #     total_results = int(total_results_text.strip()) if total_results_text else 0
+    #     self.logger.info(f"Total results reported: {total_results}")
         
-        product_items = response.css('li.s-item, li.srp-river-answer')
-        product_count_on_page = 0
-        collected_items = 0
+    #     product_items = response.css('li.s-item, li.srp-river-answer')
+    #     product_count_on_page = 0
+    #     collected_items = 0
         
-        for i, item in enumerate(product_items):
-            if i < 2:
-                continue
+    #     for i, item in enumerate(product_items):
+    #         if i < 2:
+    #             continue
             
-            if item.css('span.BOLD:contains("Results matching fewer words")').get():
-                self.logger.info(f"Found 'Results matching fewer words' marker on page {current_page_num}. Stopping collection.")
-                break
+    #         if item.css('span.BOLD:contains("Results matching fewer words")').get():
+    #             self.logger.info(f"Found 'Results matching fewer words' marker on page {current_page_num}. Stopping collection.")
+    #             break
             
-            link = item.css('a.s-item__link::attr(href)').get()
-            if link:
-                full_url = response.urljoin(link)
-                product_id_match = re.search(r'/itm/(\d+)', full_url)
-                if product_id_match:
-                    product_id = product_id_match.group(1)
-                    meta = {
-                        'source_keyword': source_keyword,
-                        'current_keyword': current_keyword,
-                        'category_id': category_id,
-                        'search_page_number': current_page_num,
-                        'search_url': response.url,
-                        'product_id_from_link': product_id,
-                        'total_results': total_results
-                    }
-                    yield self._make_request(full_url, callback=self.parse_product_page, meta=meta)
-                    product_count_on_page += 1
-                    collected_items += 1
+    #         link = item.css('a.s-item__link::attr(href)').get()
+    #         if link:
+    #             full_url = response.urljoin(link)
+    #             product_id_match = re.search(r'/itm/(\d+)', full_url)
+    #             if product_id_match:
+    #                 product_id = product_id_match.group(1)
+    #                 meta = {
+    #                     'source_keyword': source_keyword,
+    #                     'current_keyword': current_keyword,
+    #                     'category_id': category_id,
+    #                     'search_page_number': current_page_num,
+    #                     'search_url': response.url,
+    #                     'product_id_from_link': product_id,
+    #                     'total_results': total_results
+    #                 }
+    #                 yield self._make_request(full_url, callback=self.parse_product_page, meta=meta)
+    #                 product_count_on_page += 1
+    #                 collected_items += 1
         
-        self.logger.info(f"Enqueued {product_count_on_page} product page requests from page {current_page_num} for '{display_keyword_log}'.")
+    #     self.logger.info(f"Enqueued {product_count_on_page} product page requests from page {current_page_num} for '{display_keyword_log}'.")
         
-        if current_page_num < self.max_pages and collected_items < total_results:
-            next_page_link = response.css('a.pagination__next::attr(href)').get()
-            if next_page_link:
-                next_page_url = response.urljoin(next_page_link)
-                self.logger.info(f"Found next page link: {next_page_url}")
-                meta = response.meta.copy()
-                meta['search_page_number'] += 1
-                yield self._make_request(next_page_url, callback=self.parse_search_results, meta=meta)
-            else:
-                self.logger.info(f"No 'next page' link found on page {current_page_num}. Reached last page.")
-        else:
-            if collected_items >= total_results:
-                self.logger.info(f"Collected {collected_items} items, matching or exceeding total results ({total_results}). Stopping pagination.")
-            else:
-                self.logger.info(f"Reached max pages ({self.max_pages}) for '{display_keyword_log}'. Stopping pagination.")
+    #     if current_page_num < self.max_pages and collected_items < total_results:
+    #         next_page_link = response.css('a.pagination__next::attr(href)').get()
+    #         if next_page_link:
+    #             next_page_url = response.urljoin(next_page_link)
+    #             self.logger.info(f"Found next page link: {next_page_url}")
+    #             meta = response.meta.copy()
+    #             meta['search_page_number'] += 1
+    #             yield self._make_request(next_page_url, callback=self.parse_search_results, meta=meta)
+    #         else:
+    #             self.logger.info(f"No 'next page' link found on page {current_page_num}. Reached last page.")
+    #     else:
+    #         if collected_items >= total_results:
+    #             self.logger.info(f"Collected {collected_items} items, matching or exceeding total results ({total_results}). Stopping pagination.")
+    #         else:
+    #             self.logger.info(f"Reached max pages ({self.max_pages}) for '{display_keyword_log}'. Stopping pagination.")
 
     def parse_product_page(self, response):
         item = ScrapperItem()
