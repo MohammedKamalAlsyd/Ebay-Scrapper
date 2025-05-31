@@ -9,43 +9,39 @@ from Scrapper.items import ScrapperItem
 
 class MainSpider(scrapy.Spider):
     name = "main"
-    custom_settings = {
-        'USER_AGENT': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36',
-    }
+
+    # def _make_request(self, url, callback, meta=None, method='GET', body=None, headers=None):
+    #     if meta is None:
+    #         meta = {}
+    #     if self.use_tor and self.tor_proxy:
+    #         meta['proxy'] = self.tor_proxy
+    #     return scrapy.Request(url, callback=callback, meta=meta, method=method, body=body, headers=headers, errback=self.errback_handler)
 
 
-    def _make_request(self, url, callback, meta=None, method='GET', body=None, headers=None):
-        if meta is None:
-            meta = {}
-        if self.use_tor and self.tor_proxy:
-            meta['proxy'] = self.tor_proxy
-        return scrapy.Request(url, callback=callback, meta=meta, method=method, body=body, headers=headers, errback=self.errback_handler)
-
-
-    def start_requests(self):  # Changed to synchronous for simplicity
-        for keyword in self.base_keywords:
-            if self.use_suggestions_setting and self.suggestion_url_template:
-                suggestion_params = self.suggestion_base_params.copy()
-                suggestion_params['kwd'] = keyword
-                final_suggestion_url = f"{self.suggestion_url_template}?{urlencode(suggestion_params)}"
-                self.logger.info(f"Fetching suggestions for '{keyword}' from: {final_suggestion_url}")
-                request_meta = {'original_keyword': keyword}
-                yield self._make_request(final_suggestion_url, callback=self.parse_suggestions, meta=request_meta)
-            else:
-                self.logger.info(f"Using base keyword directly: '{keyword}'")
-                search_params = self.search_params_template.copy()
-                search_params['_nkw'] = keyword
-                search_params['_sacat'] = self.default_category_id_config
-                search_params['_pgn'] = 1
-                full_search_url = f"{self.search_base_url_template}?{urlencode(search_params)}"
-                request_meta = {
-                    'source_keyword': keyword,
-                    'current_keyword': keyword,
-                    'category_id': search_params['_sacat'],
-                    'search_page_number': 1,
-                    'search_url_template': self.search_base_url_template
-                }
-                yield self._make_request(full_search_url, callback=self.parse_search_results, meta=request_meta)
+    # def start_requests(self):  # Changed to synchronous for simplicity
+    #     for keyword in self.base_keywords:
+    #         if self.use_suggestions_setting and self.suggestion_url_template:
+    #             suggestion_params = self.suggestion_base_params.copy()
+    #             suggestion_params['kwd'] = keyword
+    #             final_suggestion_url = f"{self.suggestion_url_template}?{urlencode(suggestion_params)}"
+    #             self.logger.info(f"Fetching suggestions for '{keyword}' from: {final_suggestion_url}")
+    #             request_meta = {'original_keyword': keyword}
+    #             yield self._make_request(final_suggestion_url, callback=self.parse_suggestions, meta=request_meta)
+    #         else:
+    #             self.logger.info(f"Using base keyword directly: '{keyword}'")
+    #             search_params = self.search_params_template.copy()
+    #             search_params['_nkw'] = keyword
+    #             search_params['_sacat'] = self.default_category_id_config
+    #             search_params['_pgn'] = 1
+    #             full_search_url = f"{self.search_base_url_template}?{urlencode(search_params)}"
+    #             request_meta = {
+    #                 'source_keyword': keyword,
+    #                 'current_keyword': keyword,
+    #                 'category_id': search_params['_sacat'],
+    #                 'search_page_number': 1,
+    #                 'search_url_template': self.search_base_url_template
+    #             }
+    #             yield self._make_request(full_search_url, callback=self.parse_search_results, meta=request_meta)
 
     # def parse_suggestions(self, response):
     #     original_keyword = response.meta['original_keyword']

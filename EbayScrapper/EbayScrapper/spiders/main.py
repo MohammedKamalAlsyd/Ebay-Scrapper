@@ -3,6 +3,7 @@ from pathlib import Path
 import scrapy
 from scrapy.exceptions import CloseSpider
 import re
+import scrapy_playwright
 
 class MainSpider(scrapy.Spider):
     name = "main"
@@ -37,6 +38,9 @@ class MainSpider(scrapy.Spider):
     tor_proxy_address = "http://127.0.0.1:9080",
     max_search_pages_per_keyword = 3
     download_product_images = True
+    custom_settings = {
+        'USER_AGENT': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36',
+    }
 
     def _make_request(self, url, callback, meta=None, method='GET', body=None, headers=None):
         if meta is None:
@@ -212,3 +216,6 @@ class MainSpider(scrapy.Spider):
 
     def parse_product_page(self, response):
         pass
+
+
+# don't forget to set user agent and the image middleware pipeline in settings.py
