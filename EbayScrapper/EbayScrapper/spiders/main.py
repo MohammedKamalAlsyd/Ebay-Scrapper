@@ -4,6 +4,7 @@ import scrapy
 from scrapy.exceptions import CloseSpider
 import re
 import scrapy_playwright
+from EbayScrapper.items import EbayscrapperItem
 
 class MainSpider(scrapy.Spider):
     name = "main"
