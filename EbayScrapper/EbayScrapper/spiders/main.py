@@ -8,7 +8,7 @@ import time
 
 class MainSpider(scrapy.Spider):
     name = "main"
-    search_keywords = ["rtx"]
+    search_keywords = ["rtx 5090 founder edition"]
     use_suggestions = True
     suggestion_api_url = "https://autosug.ebaystatic.com/autosug"
     suggestion_base_params = {
@@ -41,14 +41,21 @@ class MainSpider(scrapy.Spider):
     download_product_images = True
     custom_settings = {
         'USER_AGENT': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36',
+        'DOWNLOAD_HANDLERS': {
+            'http': 'scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler',
+            'https': 'scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler',
+        },
+        'TWISTED_REACTOR': 'twisted.internet.asyncioreactor.AsyncioSelectorReactor',
+        'PLAYWRIGHT_MAX_CONTEXTS': 4,  # Limit concurrent browsers (adjust based on system capacity)
+        'CONCURRENT_REQUESTS': 8,     # Reduce if resource overload is suspected
     }
 
     def _make_request(self, url, callback, meta=None, method='GET', body=None, headers=None):
         if meta is None:
             meta = {}
-        if self.use_tor and self.tor_proxy:
-            meta['proxy'] = self.tor_proxy
-        return scrapy.Request(url, callback=callback, meta=meta, method=method, body=body, headers=headers, errback=self.errback_handler)
+        if self.use_tor and self.tor_proxy_address:
+            meta['proxy'] = self.tor_proxy_address
+        return scrapy.Request(url, callback=callback, meta=meta, method=method, body=body, headers=headers, errback=self.error_handler)
 
 
     def error_handler(self, failure):
@@ -88,13 +95,13 @@ class MainSpider(scrapy.Spider):
 
             # Process the JSON response
             sug_list = data.get("richRes", {}).get("sug", [])
+            print(sug_list)
             for cat_id in self.allowed_categories:
-                search_params = self.search_params_template.copy()
+                search_params = self.search_base_params.copy()
                 search_params['_sacat'] = cat_id
                 search_params['_pgn'] = 1
                 if sug_list and isinstance(sug_list, list):
-                    sug_items = [data.get("richRes", {}).get("sug", [])]
-                    for sug_item in sug_items:
+                    for sug_item in sug_list:
                         kwd = sug_item.get("kwd")
                         search_params['_nkw'] = kwd
                         self.logger.info(f" Suggested keyword: '{sug_item}', Category ID: '{cat_id}'")
@@ -104,7 +111,7 @@ class MainSpider(scrapy.Spider):
                             'current_keyword': kwd,
                             'category_id': cat_id,
                             'search_page_number': 1,
-                            'search_urls': self.search_base_url_template
+                            'search_url_template': self.search_base_url_template
                         }
                         yield self._make_request(sug_url, callback=self.parse_search_results, meta=request_meta)
                 else:
@@ -190,24 +197,32 @@ class MainSpider(scrapy.Spider):
                 'product_id_from_link': product_id_match.group(1),
                 'total_results': total_results,
                 'playwright': True,
-                "playwright_include_page": True # to take screenshots if needed
+                "playwright_include_page": True, # to take screenshots if needed
+                'playwright_page_methods': [
+                        ('wait_for_selector', "h1.x-item-title__mainTitle span.ux-textspans--BOLD"),
+                        ('wait_for_selector', "div[data-testid='x-price-primary'] span.ux-textspans")
+                    ]
             }
             yield self._make_request(link, callback=self.parse_product_page,meta=meta)
             product_count_on_page += 1
 
         self.logger.info(f"Total products processed on page {current_page_num} for '{display_keyword_log}': {product_count_on_page}")
         
-        # check if we need to fetch more pages
+        # check if we need to fetch more pages (Appear only if products spread on many pages)
         ebay_current_search_page_num = response.xpath(
             '//h2[contains(@class, "clipped") and contains(text(), "Results Pagination")]/text()'
         ).re_first(r'Page (\d+)')
-        if current_page_num < self.max_search_pages_per_keyword and int(ebay_current_search_page_num) == current_page_num:
+        if ebay_current_search_page_num is None:
+            self.logger.warning(f"Could not extract current search page number from response for '{display_keyword_log}' in category '{category_id}'. Assuming page 1.")
+            return
+        elif current_page_num < self.max_search_pages_per_keyword and int(ebay_current_search_page_num) == current_page_num:
             next_page_num = current_page_num + 1
             self.logger.info(f"Preparing to fetch next page {next_page_num} for '{display_keyword_log}' in category '{category_id}'.")
             meta = response.meta.copy()
             meta['search_page_number'] += 1
-            search_params = response.meta.get('search_url_template', self.search_base_url_template)
+            search_params = self.search_base_params.copy()
             search_params['_pgn'] = next_page_num
+            search_params['_nkw'] = current_keyword
             yield self._make_request(
                 search_url_template.format(**search_params),
                 callback=self.parse_search_results,
@@ -239,185 +254,123 @@ class MainSpider(scrapy.Spider):
         try:
             # --- Product Information ---
             # Title
-            self.logger.debug(f"Extracting title for {response.url}")
             item['title'] = response.css('h1.x-item-title__mainTitle span.ux-textspans--BOLD::text').get()
-
             if item['title']:
                 item['title'] = item['title'].strip()
-                self.logger.debug(f"Extracted title: {item['title'][:50]}...")
             else:
                 self.logger.warning(f"Could not extract title for {response.url}")
                 extraction_successful = False # Title is critical
 
             # Price
-            self.logger.debug(f"Extracting US price for {response.url}")
             item['price'] = None  # Initialize to None
 
-            # Attempt 1: Look for the approximate US price first
-            # Selector for: <span class="ux-textspans ux-textspans--SECONDARY ux-textspans--BOLD">US $181.96</span>
-            # within <div class="x-price-approx" data-testid="x-price-approx">
             approx_price_selector = 'div[data-testid="x-price-approx"] span.x-price-approx__price span.ux-textspans::text'
             approx_price_text = response.css(approx_price_selector).get()
 
-            if approx_price_text:
-                # The approximate price is usually already specified as US $, but let's be sure
-                if "US $" in approx_price_text:
-                    item['price'] = approx_price_text.strip()
-                    self.logger.debug(f"Extracted US price from approximate section: {item['price']}")
-                # else:
-                    # self.logger.debug(f"Approximate price found ('{approx_price_text.strip()}') but not explicitly US$. Skipping.")
-                    # This 'else' case is unlikely given the HTML structure for approximate price,
-                    # as it usually denotes a conversion to USD.
-
-            # Attempt 2: If no approximate US price, check the primary price
+            if approx_price_text and "US $" in approx_price_text:
+                item['price'] = approx_price_text.strip()
+            
             if not item['price']:
                 primary_price_selector = 'div[data-testid="x-price-primary"] span.ux-textspans::text'
                 primary_price_text = response.css(primary_price_selector).get()
 
-                if primary_price_text:
-                    primary_price_text = primary_price_text.strip()
-                    if "US $" in primary_price_text:
-                        item['price'] = primary_price_text
-                        self.logger.debug(f"Extracted US price from primary section: {item['price']}")
-                    # else:
-                        # self.logger.debug(f"Primary price found ('{primary_price_text}') but not US$. Skipping.")
-
-            # Final check and logging
-            if item['price']:
-                # item['price'] will already be stripped if it came from primary_price_text logic
-                # or approx_price_text logic.
-                self.logger.debug(f"Final extracted US price: {item['price']}")
-            else:
-                # Log the primary price if it existed but wasn't USD, for more info
+                if primary_price_text and "US $" in primary_price_text:
+                    item['price'] = primary_price_text.strip()
+            
+            if not item['price']:
                 primary_price_text_for_log = response.css('div[data-testid="x-price-primary"] span.ux-textspans::text').get()
                 if primary_price_text_for_log:
-                    primary_price_text_for_log = primary_price_text_for_log.strip()
-                    self.logger.warning(f"Could not extract US price for {response.url}. Primary price found was: '{primary_price_text_for_log}'")
+                    self.logger.warning(f"Could not extract US price for {response.url}. Primary price found was: '{primary_price_text_for_log.strip()}'")
                 else:
                     self.logger.warning(f"Could not extract any price (including US price) for {response.url}")
-                extraction_successful = False  # price is critical
-
+                extraction_successful = False  # Price is critical
 
             # Category
-            self.logger.debug(f"Extracting category (breadcrumbs) for {response.url}")
             breadcrumbs_texts = response.css('nav.breadcrumbs ul li a span::text').getall()
             if not breadcrumbs_texts:
                 breadcrumbs_texts = response.xpath("//nav[contains(@aria-label, 'breadcrumb')]//li//a/descendant-or-self::*/text()").getall()
             item['category'] = " > ".join([b.strip() for b in breadcrumbs_texts if b.strip()]) if breadcrumbs_texts else response.meta.get('category_id', "N/A")
-            self.logger.debug(f"Extracted category: {item['category']}")
 
             # Description (Handling iframe)
-            self.logger.debug(f"Looking for description iframe in {response.url}")
             iframe_src = response.css('iframe#desc_ifr::attr(src)').get()
             if iframe_src:
                 desc_url = response.urljoin(iframe_src)
-                self.logger.debug(f"Found description iframe; scheduling request to {desc_url}")
-                
-                # Pass the *already populated* item to the parse_description callback
-                # Do NOT return here. Continue parsing the rest of the current page.
                 yield self._make_request(
                     url=desc_url,
                     callback=self.parse_description,
-                    meta={'item': item, 'product_id_from_link': product_id, 'playwright': True, "playwright_include_page": True},
+                    meta={'item': item, 
+                          'product_id_from_link': product_id, 
+                          'playwright': True, 
+                          "playwright_include_page": True,
+                          'playwright_page_methods': [
+                                ('wait_for_selector', "h1.x-item-title__mainTitle span.ux-textspans--BOLD"),
+                                ('wait_for_selector', "div[data-testid='x-price-primary'] span.ux-textspans")
+                            ]
+                          },
                 )
-                # No 'return' here. The function continues to the end.
-                # The item will be yielded by `parse_description` when the iframe request completes.
             else:
-                # If no iframe for description, set a default and yield the complete item here
                 item['description'] = "Description not found (no iframe)."
-                self.logger.warning(f"Description iframe not found for {response.url}. Yielding item without iframe description.")
-                
-                # Yield the item as it's now complete from the main page and has no iframe
-                yield item
+                self.logger.warning(f"Description iframe not found for {response.url}. Item will not have a detailed description.")
+                extraction_successful = False # Description is critical if not found
             
-
             # Condition
-            self.logger.debug(f"Extracting condition for {response.url}")
             item['condition'] = response.css('div.x-item-condition-text span.ux-textspans::text').get()
-
             if item['condition']:
                 item['condition'] = item['condition'].strip()
-                self.logger.debug(f"Extracted condition: {item['condition']}")
 
             # Brand
-            self.logger.debug(f"Extracting brand for {response.url}")
             brand_selector_xpath = "//dl[contains(@class, 'ux-labels-values--brand')]/dd//span[@class='ux-textspans']/text()"
-
             item['brand'] = response.xpath(brand_selector_xpath).get()
             if item['brand']:
                 item['brand'] = item['brand'].strip()
-                self.logger.debug(f"Extracted brand: {item['brand']}")
-            else:
-                self.logger.debug(f"Brand not found using primary selector for {response.url}")
 
             # Location
-            self.logger.debug(f"Extracting location for {response.url}")
-            raw_loc  = response.xpath("//span[contains(@class, 'ux-textspans--SECONDARY') and starts-with(normalize-space(.), 'Located in:')]/text()").get()
+            raw_loc = response.xpath("//span[contains(@class, 'ux-textspans--SECONDARY') and starts-with(normalize-space(.), 'Located in:')]/text()").get()
             if raw_loc:
                 item['location'] = raw_loc.replace('Located in:', '').strip()
-                self.logger.debug(f"Extracted location: {item['location']}")
 
             # Free Returns
-            self.logger.debug(f"Extracting return policy for {response.url}")
             raw_returns = response.xpath("//div[contains(@class, 'ux-labels-values--returns')]//div[@class='ux-labels-values__values-content']//text()").get()
-
             if raw_returns:
                 item['return_policy'] = raw_returns.strip()
-                self.logger.debug(f"Extracted return policy: {item['return_policy']}")
-
 
             # --- Seller Information ---
             # Seller Name
-            self.logger.debug(f"Extracting seller name for {response.url}")
             item['seller_name'] = response.css('div.x-sellercard-atf__info__about-seller a span.ux-textspans--BOLD::text').get()
             if item['seller_name']:
                 item['seller_name'] = item['seller_name'].strip()
-                self.logger.debug(f"Extracted seller_name: {item['seller_name']}")
 
             # Seller feedback count
-            self.logger.debug(f"Extracting seller rating and feedback count for {response.url}")
             seller_feedback_count_text = response.css('div.x-sellercard-atf__about-seller-item span.ux-textspans--SECONDARY::text').get()
             if seller_feedback_count_text:
                 item['seller_feedback_count'] = seller_feedback_count_text.strip('()')
-                self.logger.debug(f"Seller feedback count: {item['seller_feedback_count']}")
-
 
             # Extract seller rating (percentage)
             seller_rating_percentage = response.css('div.x-sellercard-atf__data-item button span.ux-textspans--PSEUDOLINK::text').get()
             if seller_rating_percentage:
                 item['seller_positive_feedback_percentage'] = seller_rating_percentage.strip()
-            self.logger.debug(f"Seller rating: {item['seller_positive_feedback_percentage']}")
 
             # Extract seller link
             item['seller_link'] = response.css('div.x-sellercard-atf__info__about-seller a::attr(href)').get()
-            if item['seller_link']:
-                self.logger.debug(f"Seller link: {item['seller_positive_feedback_percentage']}")
 
             # Extract top rated seller status
-            self.logger.debug(f"Extracting top rated seller status for {response.url}")
             item['top_rated_seller'] = False
-
-            # Check for the presence of the 'Top Rated Plus' badge or text
             if response.css('span.ux-program-badge svg use[href="#icon-top-rated-seller-24"]').get():
                 item['top_rated_seller'] = True
-                self.logger.debug(f"Top rated seller: {item['top_rated_seller']}")
 
             # --- Image URLs for ImagesPipeline ---
-            self.logger.debug(f"Extracting image URLs for {response.url} to be processed by ImagesPipeline.")
             image_urls = response.css('div.ux-image-grid button.ux-image-grid-item img[src*="s-l"]::attr(src)').getall()
             item['image_urls'] = image_urls
-            if item['image_urls']:
-                self.logger.debug(f"Found {len(item['image_urls'])} image URLs. First one: {item['image_urls'][0]}")
-            else:
+            if not item['image_urls'] and self.download_product_images:
                 self.logger.warning(f"No images found for {response.url} though download_product_images is True.")
-            if self.download_product_images:
-                image_download_urls = []
-                for img in item['image_urls']:
-                    image_download_urls.append(response.urljoin(img))
+                extraction_successful = False # Images are critical if download is enabled
+
+            if self.download_product_images and item['image_urls']:
+                image_download_urls = [response.urljoin(img) for img in item['image_urls']]
                 yield {'image_urls': image_download_urls}
 
         except Exception as e:
-            self.logger.error(f"Unexpected error parsing product page {response.url}: {e}", exc_info=True)
+            self.logger.error(f"Unexpected error during initial parsing of product page {response.url}: {e}", exc_info=True)
             extraction_successful = False 
 
         # --- Final check for critical extraction success and save debug files if failed ---
@@ -428,9 +381,7 @@ class MainSpider(scrapy.Spider):
                 debug_dir.mkdir(parents=True, exist_ok=True)
             except Exception as dir_e:
                 self.logger.error(f"Failed to create debug directory {debug_dir}: {dir_e}")
-                # If debug dir can't be made, we can't save debug files.
-                # Depending on policy, could raise CloseSpider or just log and continue.
-                return # Do not yield item
+                return # Do not yield item if debug dir can't be made
 
             timestamp = time.strftime("%Y%m%d_%H%M%S")
             safe_product_id = re.sub(r'[^a-zA-Z0-9_-]', '_', str(product_id))
@@ -446,29 +397,24 @@ class MainSpider(scrapy.Spider):
                 self.logger.error(f"Failed to save HTML for {response.url} to {html_file_path}: {html_e}")
 
             # Save Screenshot if Playwright page object is available
-            # This relies on 'playwright_include_page': True in the request meta
-            # and scrapy-playwright successfully providing the page object.
             playwright_page = response.meta.get('playwright_page')
-            if playwright_page:
-                if hasattr(playwright_page, 'screenshot') and callable(playwright_page.screenshot):
-                    screenshot_path = debug_dir / f"{filename_base}.png"
-                    try:
-                        # Since this method is async def, we can await playwright operations
-                        await playwright_page.screenshot(path=str(screenshot_path), full_page=True)
-                        self.logger.info(f"Screenshot saved to {screenshot_path}")
-                    except Exception as ss_e:
-                        self.logger.error(f"Could not save screenshot for {response.url} to {screenshot_path}: {ss_e}")
-                else:
-                    self.logger.warning(f"Playwright page object found in meta for {response.url}, but it does not have a callable 'screenshot' method or is not the expected type.")
-            else:
-                self.logger.info(f"Playwright page object not found in response.meta for {response.url}. Cannot save screenshot. Ensure 'playwright_include_page': True was set in the request meta.")
-                        
+            if playwright_page and hasattr(playwright_page, 'screenshot') and callable(playwright_page.screenshot):
+                screenshot_path = debug_dir / f"{filename_base}.png"
+                try:
+                    await playwright_page.screenshot(path=str(screenshot_path), full_page=True)
+                    self.logger.info(f"Screenshot saved to {screenshot_path}")
+                except Exception as ss_e:
+                    self.logger.error(f"Could not save screenshot for {response.url} to {screenshot_path}: {ss_e}")
+            elif self.settings.getbool('PLAYWRIGHT_INCLUDE_PAGE') and not playwright_page:
+                self.logger.warning(f"Playwright page object not found in response.meta for {response.url}. Cannot save screenshot. Ensure 'playwright_include_page': True was correctly set and Playwright integration is working.")
+            
             return # Do not yield item if extraction failed critically
 
         # If all went well (or well enough based on your criteria for 'extraction_successful')
-        self.logger.info(f"Successfully parsed product: {item.get('title', 'N/A')[:60]}... from {response.url}")
-        yield item
-
+        # Only yield if description was not handled by iframe, otherwise it's yielded by parse_description
+        if not iframe_src:
+            self.logger.info(f"Successfully parsed product: {item.get('title', 'N/A')[:60]}... from {response.url}. Yielding item.")
+            yield item
 
 
     def parse_description(self, response):
