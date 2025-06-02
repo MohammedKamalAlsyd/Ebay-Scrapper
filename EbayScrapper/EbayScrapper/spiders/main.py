@@ -1,11 +1,9 @@
 import json
-from pathlib import Path
 import scrapy
 import random
 from scrapy.exceptions import CloseSpider
 import re
 from EbayScrapper.items import EbayscrapperItem
-import time
 from scrapy_playwright.page import PageMethod
 
 class MainSpider(scrapy.Spider):
@@ -42,7 +40,7 @@ class MainSpider(scrapy.Spider):
     max_search_pages_per_keyword = 3
     custom_settings = {
         'PLAYWRIGHT_MAX_CONTEXTS': 2,         # Limit to 2 concurrent browser contexts
-        'PLAYWRIGHT_MAX_PAGES_PER_CONTEXT': 1, # Only 1 page per context
+        'PLAYWRIGHT_MAX_PAGES_PER_CONTEXT': 2, # Only 1 page per context
         'CONCURRENT_REQUESTS': 2,             # Match concurrency to Playwright limits
         'DOWNLOAD_DELAY': 1,                  # Add a 1-second delay between requests
     }
@@ -267,6 +265,11 @@ class MainSpider(scrapy.Spider):
             item['derived_from_keyword'] = response.meta.get('current_keyword')
             item['category_context_from_search'] = response.meta.get('category_id')
             item['link'] = page.url
+            item['product_id'] = response.meta.get('product_id_from_link', 'unknown')
+            
+            if not item['product_id']:
+                self.logger.warning(f"Product ID not found in response meta for {page.url}.")
+                extraction_successful = False
 
             # --- Product Information ---
             # Title
@@ -349,13 +352,32 @@ class MainSpider(scrapy.Spider):
                 extraction_successful = False
 
             # Extract description from iframe
+            # --- Extract description from <iframe id="desc_ifr"> ---
             try:
+                # 1. Wait for the iframe element to appear
                 await page.wait_for_selector('#desc_ifr', timeout=30000)
-                frame = page.frame_locator('#desc_ifr').first
-                description_text = await frame.text_content('body')
-                item['description'] = re.sub(r'\s+', ' ', description_text).strip() if description_text else "Description not found."
+
+                # 2. Grab the <iframe> element handle
+                iframe_element = await page.query_selector('#desc_ifr')
+                if not iframe_element:
+                    raise Exception("Iframe element not found after wait_for_selector.")
+
+                # 3. Get Playwright Frame object from that element
+                content_frame = await iframe_element.content_frame()
+                if not content_frame:
+                    raise Exception("Could not get content_frame from iframe.")
+
+                # 4. Extract the inner text of the iframe’s <body>
+                #    You can also use: await content_frame.text_content('body')
+                raw_description = await content_frame.evaluate("document.body.innerText")
+                if raw_description:
+                    # Normalize whitespace and strip
+                    clean_desc = re.sub(r'\s+', ' ', raw_description).strip()
+                    item['description'] = clean_desc
+                else:
+                    item['description'] = "Description not found."
             except Exception as e:
-                self.logger.warning(f"Could not extract description: {e}")
+                self.logger.warning(f"Could not extract description from iframe: {e}")
                 item['description'] = "Description not found."
 
         except Exception as e:

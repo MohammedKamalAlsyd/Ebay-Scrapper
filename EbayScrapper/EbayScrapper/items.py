@@ -19,7 +19,6 @@ class EbayscrapperItem(Item):
     seller_positive_feedback_percentage = Field() # e.g. "99.5% Positive feedback"
     seller_feedback_count = Field() # e.g., "(12345)"
     seller_link = Field()
-    seller_verified = Field() # Less common directly, might be inferred
     top_rated_seller = Field() # Boolean or text
 
     # Meta Search Info
