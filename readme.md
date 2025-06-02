@@ -23,35 +23,29 @@ A robust and configurable web-scraping framework built with **Scrapy** and **Pla
 * **Enhanced Request Management**:
     * **Random User-Agent Rotation**: Cycles through a list of diverse user agents for each request to mimic organic traffic.
     * **Optional Tor Proxy Support**: Configurable to route traffic through a Tor SOCKS proxy for increased anonymity.
-* **Configurability & Control**:
-    * Spider settings (keywords, suggestion use, Tor, etc.) are currently managed within the spider and can be refactored to use an external `scraper_config.json`.
-    * Playwright concurrency, page limits, and download delays are adjustable via Scrapy `custom_settings`.
 * **Error Handling & Logging**: Implements error handlers for request failures and detailed logging for monitoring and debugging.
 * **Structured Output**: Utilizes Scrapy Items (`EbayscrapperItem`) for clean and organized data.
-* **Extensible Design**: The spider is structured for clarity, making it easier to add new features, support other websites, or modify parsing logic.
 
 ---
 
 ## ⚙️ Project Structure
 
-```
-EbayScrapper/                  # Root project folder
-├── .gitignore                 # Specifies intentionally untracked files that Git should ignore
-├── scrapy.cfg                 # Scrapy project configuration file
-├── requirements.txt           # Python package dependencies
-├── README.md                  # This file
-├── CONTRIBUTING.md            # Guidelines for contributing
-├── downloaded_images/         # Default directory for downloaded product images (if ImagesPipeline is enabled)
-└── EbayScrapper/              # Scrapy project Python module
-    ├── __init__.py
-    ├── items.py               # Definition of EbayscrapperItem
-    ├── middlewares.py         # Custom spider/downloader middlewares (if any)
-    ├── pipelines.py           # Item processing pipelines (e.g., for saving data, downloading images)
-    ├── settings.py            # Scrapy project settings
-    └── spiders/
-        ├── __init__.py
-        └── main.py            # MainSpider: core scraping logic for eBay
-```
+
+📁 EbayScrapper/                      # Root project folder
+├── .gitignore                       # Specifies untracked files for Git to ignore
+├── scrapy.cfg                       # Scrapy project configuration file
+├── requirements.txt                 # Python package dependencies
+├── README.md                        # Project documentation
+├── CONTRIBUTING.md                  # Contribution guidelines
+└── 📁 EbayScrapper/                 # Main Scrapy module (same name as project root)
+    ├── __init__.py                  # Makes this directory a Python package
+    ├── items.py                     # Defines item classes (e.g., `EbayScrapperItem`)
+    ├── middlewares.py               # Custom middlewares (if implemented)
+    ├── pipelines.py                 # Defines item pipelines for post-processing
+    ├── settings.py                  # Scrapy settings (user agent, pipelines, etc.)
+    └── 📁 spiders/                  # Contains spider classes (scraping logic)
+        ├── __init__.py              # Marks the spiders directory as a Python package
+        └── main.py                  # Main spider implementation (e.g., `MainSpider`)
 
 ---
 
@@ -59,7 +53,7 @@ EbayScrapper/                  # Root project folder
 
 1.  **Clone the repository**
     ```bash
-    git clone [https://github.com/yourusername/EbayScrapper.git](https://github.com/yourusername/EbayScrapper.git)
+    git clone [https://github.com/yourusername/EbayScrapper.git](https://github.com/yourusername/EbayScrapper.git) # Replace with your repo URL
     cd EbayScrapper
     ```
 
@@ -90,104 +84,86 @@ EbayScrapper/                  # Root project folder
 
 ## 📝 Configuration
 
-While many operational settings (keywords, Tor usage, suggestion preferences, etc.) are currently defined as attributes within the `EbayScrapper/spiders/main.py` spider, a more flexible approach is to use an external `scraper_config.json` file placed in `EbayScrapper/EbayScrapper/scraper_config.json`.
+The primary configuration for the `MainSpider` is managed through attributes defined directly within the `EbayScrapper/EbayScrapper/spiders/main.py` file.
 
-**Example `scraper_config.json` structure (if you adapt the spider to use it):**
-```json
-{
-  "base_keywords": ["rtx 5090 founder edition", "amd 7950x3d"],
-  "use_suggestions": true,
-  "suggestion_api_url": "[https://autosug.ebaystatic.com/autosug](https://autosug.ebaystatic.com/autosug)",
-  "suggestion_base_params": {
-    "sId": "0", "_rs": "1", "_richres": "1", "callback": "0",
-    "_store": "1", "_help": "0", "_richsug": "1", "_eprogram": "1",
-    "_td": "1", "_nearme": "1", "_nls": "0"
-  },
-  "search_base_url": "[https://www.ebay.com/sch/i.html](https://www.ebay.com/sch/i.html)",
-  "search_base_params": {
-    "_from": "R40", "rt": "nc", "_sacat": "0", "_ipg": "240", "_sop": "12"
-  },
-  "allowed_categories": ["0"],
-  "use_tor": false,
-  "tor_proxy_address": "[http://127.0.0.1:9080](http://127.0.0.1:9080)",
-  "max_search_pages_per_keyword": 3,
-  "playwright_page_load_timeout": 60000,
-  "sites": {
-      "ebay_us": {
-          "base_url": "[https://www.ebay.com](https://www.ebay.com)",
-          // Add site-specific selectors or parameters if needed
-      }
-  }
-}
-```
-**Current Spider Settings (in `main.py`):**
-* `search_keywords`: List of search terms.
-* `use_suggestions`: Boolean to enable/disable eBay suggestions.
-* `allowed_categories`: List of eBay category IDs to search within.
-* `use_tor`: Boolean to enable/disable Tor proxy.
-* `tor_proxy_address`: Tor SOCKS proxy address.
-* `max_search_pages_per_keyword`: Max number of search result pages to scrape per keyword.
-* Playwright settings (`PLAYWRIGHT_MAX_CONTEXTS`, etc.) are in `custom_settings` within the spider, or can be moved to `settings.py`.
+### Spider Parameters (`EbayScrapper/spiders/main.py`):
+
+* `name = "main"`: The unique name used to identify and run the spider (e.g., `scrapy crawl main`).
+* `search_keywords = ["rtx 5090 founder edition"]`: A list of strings, where each string is a keyword phrase to be searched on eBay.
+* `use_suggestions = False`: A boolean value. If `True`, the spider will first fetch autocomplete suggestions from eBay for each `search_keyword` and then perform searches for each suggestion. If `False`, it will search directly for the `search_keywords`.
+* `suggestion_api_url = "https://autosug.ebaystatic.com/autosug"`: The base URL for eBay's autosuggestion API.
+* `suggestion_base_params = {...}`: A dictionary of base parameters sent with each request to the suggestion API.
+* `suggestion_url_template = "..."`: A string template used to format the full URL for fetching suggestions, incorporating the `kwd` (keyword) and other `suggestion_base_params`.
+* `search_base_url = "https://www.ebay.com/sch/i.html"`: The base URL for eBay's search results page.
+* `search_base_params = {...}`: A dictionary of base parameters sent with each search request (e.g., items per page `_ipg`, sort order `_sop`).
+* `search_base_url_template = "..."`: A string template used to format the full URL for eBay searches, incorporating `_nkw` (keyword), `_sacat` (category), and other `search_base_params`.
+* `allowed_categories = ["0"]`: A list of eBay category IDs. The spider will perform searches within each of these categories for every keyword (or suggestion). "0" typically means "All Categories".
+* `use_tor = False`: A boolean value. If `True`, all requests made by the spider will be routed through the Tor proxy specified by `tor_proxy_address`.
+* `tor_proxy_address = "http://127.0.0.1:9080"`: The address of the Tor SOCKS proxy. *Note: For Scrapy, if Tor provides a SOCKS5 proxy, the scheme should ideally be `socks5://` (e.g., `socks5://127.0.0.1:9050`). Using `http://` implies an HTTP proxy; ensure your Tor setup matches this or adjust the scheme accordingly.*
+* `max_search_pages_per_keyword = 3`: An integer defining the maximum number of search result pages to scrape for each keyword/category combination.
+* `custom_settings = {...}`: A dictionary for Scrapy settings specific to this spider, overriding global settings in `settings.py`. This includes Playwright concurrency limits and download delays.
+    * `'PLAYWRIGHT_MAX_CONTEXTS': 2`: Limits Playwright to 2 concurrent browser contexts.
+    * `'PLAYWRIGHT_MAX_PAGES_PER_CONTEXT': 2`: Limits to 2 pages per Playwright context.
+    * `'CONCURRENT_REQUESTS': 2`: Global Scrapy concurrency, matched to Playwright limits here.
+    * `'DOWNLOAD_DELAY': 1`: Adds a 1-second delay between requests.
+* `USER_AGENTS = [...]`: A list of user-agent strings. The spider randomly selects one for each request to help mimic diverse organic traffic.
+
+To modify the scraper's behavior, edit these attributes directly in the `main.py` file.
 
 ---
 
 ## 🚀 Usage
 
-* **Modify Keywords (and other settings)**:
-    Directly edit the attributes at the top of `EbayScrapper/EbayScrapper/spiders/main.py` or adapt the spider to load from `scraper_config.json`.
+1.  **Configure the Spider**:
+    Open `EbayScrapper/EbayScrapper/spiders/main.py` and adjust the parameters (e.g., `search_keywords`, `use_tor`, `max_search_pages_per_keyword`) as needed.
 
-* **Run the Spider**:
-    Navigate to the root `EbayScrapper` directory (the one containing `scrapy.cfg`) and run:
+2.  **Run the Spider**:
+    Navigate to the root `EbayScrapper` directory (the one containing `scrapy.cfg`) in your terminal and execute:
     ```bash
     scrapy crawl main -O output.json --logfile=scrapy_log.txt
     ```
-    * This will start the `main` spider.
-    * Scraped items will be saved to `output.json` (or other formats like CSV, XML).
-    * A detailed log will be written to `scrapy_log.txt`.
-    * Downloaded images (if `ImagesPipeline` is configured in `settings.py` and `pipelines.py`) will be stored in `downloaded_images/` (or the path specified in `IMAGES_STORE`).
+    * This command starts the `main` spider.
+    * Scraped items will be saved to `output.json` in JSON format (other formats like CSV, XML are also supported by Scrapy's feed exports).
+    * A detailed log of the scraping process will be written to `scrapy_log.txt`.
+    * If the `ImagesPipeline` is enabled and configured in `settings.py` and `pipelines.py`, downloaded images will be stored in the `downloaded_images/` directory (or the path specified by `IMAGES_STORE` in `settings.py`).
 
 ---
 
 ## 📦 Extending the Project
 
-1.  **New Parser Logic**:
-    * Adjust CSS/XPath selectors in `MainSpider` if eBay's layout changes or to extract new fields.
+1.  **Modify Parsing Logic**:
+    Adjust CSS/XPath selectors within the `parse_search_results` and `parse_product_page` methods in `MainSpider` if eBay's website structure changes or to extract additional data fields.
 2.  **Data Storage**:
-    * Enable and configure pipelines in `pipelines.py` and `settings.py` for storing data in databases (e.g., PostgreSQL, MongoDB), cloud storage, etc.
+    Enable and configure Scrapy pipelines in `pipelines.py` and `settings.py` to store scraped data in databases (e.g., PostgreSQL, MongoDB), cloud storage, or other formats.
 3.  **Middleware Enhancements**:
-    * Implement custom middlewares in `middlewares.py` for advanced request/response manipulation, enhanced proxy rotation, or handling specific anti-scraping measures.
+    Implement custom Scrapy middlewares in `middlewares.py` for advanced request/response manipulation, sophisticated proxy rotation strategies, or to handle specific anti-scraping mechanisms.
 
 ---
 
 ## 📝 License
 
-This project is licensed under the MIT License. See the `LICENSE` file for details.
+This project is licensed under the MIT License. See the `LICENSE` file for details (Create a `LICENSE` file with MIT License text if one does not exist).
 
 ---
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see the [CONTRIBUTING.md](CONTRIBUTING.md) file for guidelines on how to contribute to this project.
+Contributions are welcome. Please refer to the [CONTRIBUTING.md](CONTRIBUTING.md) file for guidelines on how to contribute to this project.
 
 ---
 
 ### Tor Configuration on Windows (Example)
 
-If you're using Tor on Windows and want to set a specific HTTP tunnel port for applications like this scraper (when `use_tor` is true and `tor_proxy_address` points to an HTTP proxy for Tor, though the code uses a SOCKS proxy by default with `http://` prefix which might be a typo for `socks5://` or it relies on an HTTP to SOCKS bridge like Privoxy):
+If `use_tor` is set to `True`:
 
-1.  Locate your Tor Browser's `torrc` file. For Tor Browser Bundle, it's typically in `Tor Browser\Data\Tor\torrc`. If you installed Tor as a service, find its `torrc`.
-2.  Add or modify the line for `SocksPort` (for SOCKS proxy, which the spider seems more geared towards) or `HTTPTunnelPort` (if you specifically need an HTTP tunnel *to* the Tor network).
-    * For SOCKS (recommended for the spider's current `tor_proxy_address` if it's `http://localhost:9080` but meant for SOCKS, ensure Tor actually listens on 9080 for SOCKS):
-        ```
-        SocksPort 127.0.0.1:9050
-        ```
-        (Then update `tor_proxy_address` in spider to `socks5://127.0.0.1:9050`)
-    * If you have a setup where an HTTP proxy is fronting Tor's SOCKS proxy (e.g. Privoxy) or if Tor itself is configured to offer an HTTP port:
-        ```
-        HTTPTunnelPort 127.0.0.1:9080
-        ```
-3.  Restart Tor for the changes to take effect.
-4.  Ensure the spider's `tor_proxy_address` in `main.py` (e.g., `"http://127.0.0.1:9080"` or preferably `socks5://127.0.0.1:9050` if Tor is providing a SOCKS5 proxy) matches your Tor configuration. *Note: The `http://` prefix for a SOCKS port in Scrapy usually implies an HTTP proxy. For direct SOCKS5, it should be `socks5://`.*
+1.  Ensure Tor is installed and running.
+2.  Locate your Tor Browser's `torrc` file (typically in `Tor Browser\Data\Tor\torrc`) or the `torrc` file for your Tor service.
+3.  Confirm or set the `SocksPort`. For example:
+    ```
+    SocksPort 127.0.0.1:9050
+    ```
+    If using port `9050`, update `tor_proxy_address` in `main.py` to `socks5://127.0.0.1:9050`. If your Tor setup exposes an HTTP interface on `9080` that tunnels to SOCKS, then `http://127.0.0.1:9080` might be correct, but direct SOCKS is more common for Scrapy.
+4.  Restart Tor for changes to take effect.
 
 ---
 
