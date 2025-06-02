@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 import scrapy
+import random
 from scrapy.exceptions import CloseSpider
 import re
 from EbayScrapper.items import EbayscrapperItem
@@ -40,20 +41,28 @@ class MainSpider(scrapy.Spider):
     tor_proxy_address = "http://127.0.0.1:9080",
     max_search_pages_per_keyword = 3
     custom_settings = {
-        'USER_AGENT': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36',
-        'DOWNLOAD_HANDLERS': {
-            'http': 'scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler',
-            'https': 'scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler',
-        },
-        'TWISTED_REACTOR': 'twisted.internet.asyncioreactor.AsyncioSelectorReactor',
         'PLAYWRIGHT_MAX_CONTEXTS': 4,
     }
+    USER_AGENTS = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.1 Safari/605.1.15',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 13_1) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.1 Safari/605.1.15',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    ]
 
     def _make_request(self, url, callback, meta=None, method='GET', body=None, headers=None):
+        if not headers:
+            headers = {
+                'User-Agent': random.choice(self.USER_AGENTS)
+            }
         if meta is None:
             meta = {}
         if self.use_tor and self.tor_proxy_address:
             meta['proxy'] = self.tor_proxy_address
+            
+        self.logger.info(f"Making request to {url} with method {method} and headers {headers}")
         return scrapy.Request(url, callback=callback, meta=meta, method=method, body=body, headers=headers, errback=self.error_handler)
 
 
@@ -198,11 +207,10 @@ class MainSpider(scrapy.Spider):
                 'playwright': True,
                 "playwright_include_page": True, # to take screenshots if needed
                 'playwright_page_methods': [
-                        PageMethod("wait_for_load_state", "domcontentloaded"),
-                        PageMethod("wait_for_selector", "h1.x-item-title__mainTitle span.ux-textspans--BOLD"),
+                        PageMethod("wait_for_url", "**/itm/*"), # Wait for the URL to change to a product page
                     ]
             }
-            yield self._make_request(link, callback=self.parse_product_page,meta=meta)
+            yield self._make_request(url=link, callback=self.parse_product_page,meta=meta)
             product_count_on_page += 1
 
         self.logger.info(f"Total products processed on page {current_page_num} for '{display_keyword_log}': {product_count_on_page}")
@@ -254,6 +262,7 @@ class MainSpider(scrapy.Spider):
             # --- Product Information ---
             # Title
             item['title'] = response.css('h1.x-item-title__mainTitle span.ux-textspans--BOLD::text').get()
+            print(f"Title extracted: {item['title']}")
             if item['title']:
                 item['title'] = item['title'].strip()
             else:
