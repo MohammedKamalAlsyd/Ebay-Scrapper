@@ -28,27 +28,6 @@ A robust and configurable web-scraping framework built with **Scrapy** and **Pla
 
 ---
 
-## ⚙️ Project Structure
-
-
-📁 EbayScrapper/                      # Root project folder
-├── .gitignore                       # Specifies untracked files for Git to ignore
-├── scrapy.cfg                       # Scrapy project configuration file
-├── requirements.txt                 # Python package dependencies
-├── README.md                        # Project documentation
-├── CONTRIBUTING.md                  # Contribution guidelines
-└── 📁 EbayScrapper/                 # Main Scrapy module (same name as project root)
-    ├── __init__.py                  # Makes this directory a Python package
-    ├── items.py                     # Defines item classes (e.g., `EbayScrapperItem`)
-    ├── middlewares.py               # Custom middlewares (if implemented)
-    ├── pipelines.py                 # Defines item pipelines for post-processing
-    ├── settings.py                  # Scrapy settings (user agent, pipelines, etc.)
-    └── 📁 spiders/                  # Contains spider classes (scraping logic)
-        ├── __init__.py              # Marks the spiders directory as a Python package
-        └── main.py                  # Main spider implementation (e.g., `MainSpider`)
-
----
-
 ## 🛠 Installation
 
 1.  **Clone the repository**
