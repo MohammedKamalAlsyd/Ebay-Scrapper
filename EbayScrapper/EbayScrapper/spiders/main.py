@@ -5,11 +5,12 @@ from scrapy.exceptions import CloseSpider
 import re
 from EbayScrapper.items import EbayscrapperItem
 import time
+from scrapy_playwright.page import PageMethod
 
 class MainSpider(scrapy.Spider):
     name = "main"
     search_keywords = ["rtx 5090 founder edition"]
-    use_suggestions = True
+    use_suggestions = False
     suggestion_api_url = "https://autosug.ebaystatic.com/autosug"
     suggestion_base_params = {
         "sId": "0",
@@ -38,7 +39,6 @@ class MainSpider(scrapy.Spider):
     use_tor = False
     tor_proxy_address = "http://127.0.0.1:9080",
     max_search_pages_per_keyword = 3
-    download_product_images = True
     custom_settings = {
         'USER_AGENT': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36',
         'DOWNLOAD_HANDLERS': {
@@ -46,8 +46,7 @@ class MainSpider(scrapy.Spider):
             'https': 'scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler',
         },
         'TWISTED_REACTOR': 'twisted.internet.asyncioreactor.AsyncioSelectorReactor',
-        'PLAYWRIGHT_MAX_CONTEXTS': 4,  # Limit concurrent browsers (adjust based on system capacity)
-        'CONCURRENT_REQUESTS': 8,     # Reduce if resource overload is suspected
+        'PLAYWRIGHT_MAX_CONTEXTS': 4,
     }
 
     def _make_request(self, url, callback, meta=None, method='GET', body=None, headers=None):
@@ -199,8 +198,8 @@ class MainSpider(scrapy.Spider):
                 'playwright': True,
                 "playwright_include_page": True, # to take screenshots if needed
                 'playwright_page_methods': [
-                        ('wait_for_selector', "h1.x-item-title__mainTitle span.ux-textspans--BOLD"),
-                        ('wait_for_selector', "div[data-testid='x-price-primary'] span.ux-textspans")
+                        PageMethod("wait_for_load_state", "domcontentloaded"),
+                        PageMethod("wait_for_selector", "h1.x-item-title__mainTitle span.ux-textspans--BOLD"),
                     ]
             }
             yield self._make_request(link, callback=self.parse_product_page,meta=meta)
@@ -284,7 +283,6 @@ class MainSpider(scrapy.Spider):
                 else:
                     self.logger.warning(f"Could not extract any price (including US price) for {response.url}")
                 extraction_successful = False  # Price is critical
-
             # Category
             breadcrumbs_texts = response.css('nav.breadcrumbs ul li a span::text').getall()
             if not breadcrumbs_texts:
@@ -300,12 +298,6 @@ class MainSpider(scrapy.Spider):
                     callback=self.parse_description,
                     meta={'item': item, 
                           'product_id_from_link': product_id, 
-                          'playwright': True, 
-                          "playwright_include_page": True,
-                          'playwright_page_methods': [
-                                ('wait_for_selector', "h1.x-item-title__mainTitle span.ux-textspans--BOLD"),
-                                ('wait_for_selector', "div[data-testid='x-price-primary'] span.ux-textspans")
-                            ]
                           },
                 )
             else:
@@ -360,14 +352,11 @@ class MainSpider(scrapy.Spider):
 
             # --- Image URLs for ImagesPipeline ---
             image_urls = response.css('div.ux-image-grid button.ux-image-grid-item img[src*="s-l"]::attr(src)').getall()
-            item['image_urls'] = image_urls
-            if not item['image_urls'] and self.download_product_images:
+            item['image_urls'] = image_urls if image_urls else response.css('//*[@id="PicturePanel"]/div[1]/div/div[1]/div[1]/div[1]/div[3]/div/img/@src').get()
+            if not item['image_urls']:
                 self.logger.warning(f"No images found for {response.url} though download_product_images is True.")
                 extraction_successful = False # Images are critical if download is enabled
 
-            if self.download_product_images and item['image_urls']:
-                image_download_urls = [response.urljoin(img) for img in item['image_urls']]
-                yield {'image_urls': image_download_urls}
 
         except Exception as e:
             self.logger.error(f"Unexpected error during initial parsing of product page {response.url}: {e}", exc_info=True)
@@ -433,7 +422,6 @@ class MainSpider(scrapy.Spider):
         else:
             item['description'] = "Description not found."
             self.logger.warning(f"Description not found in iframe for {response.url}")
-
         # After processing the description, yield the complete item
         self.logger.info(f"Successfully appended description and yielding item for {item.get('title', 'N/A')[:60]}...")
         yield item

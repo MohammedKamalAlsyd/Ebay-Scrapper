@@ -9,10 +9,10 @@ DOWNLOAD_HANDLERS = {
     "http": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
     "https": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
 }
-PLAYWRIGHT_BROWSER_TYPE = "firefox"
+PLAYWRIGHT_BROWSER_TYPE = "chromium"
 PLAYWRIGHT_LAUNCH_OPTIONS = {
-    "headless": False,
-    "timeout": 20 * 1000,  # 20 seconds
+    "headless": True,
+    "timeout": 30 * 1000,  # 30 seconds
 }
 
 # Concurrency & Throttling
@@ -25,12 +25,6 @@ CONCURRENT_REQUESTS_PER_IP = 8
 # CONCURRENT_REQUESTS = 16
 # CONCURRENT_REQUESTS_PER_DOMAIN = 8
 
-
-# Image Pipelines
-ITEM_PIPELINES = {
-    "scrapy.pipelines.images.ImagesPipeline": 1
-}
-IMAGES_STORE = "Scrapped_Images"
 
 # Future-proof Defaults
 REQUEST_FINGERPRINTER_IMPLEMENTATION = "2.7"

@@ -6,11 +6,12 @@ class EbayscrapperItem(Item):
     price = Field()
     link = Field()
     description = Field()
-    image_urls = Field() # For ImagesPipeline: list of image URLs
-    category = Field()   # Category derived from breadcrumbs or search context
+    image_urls = Field()  # For ImagesPipeline: list of image URLs
+    product_id = Field()  # Unique product identifier
+    category = Field()    # Category derived from breadcrumbs or search context
     condition = Field()
     brand = Field()
-    location = Field()   # Item location
+    location = Field()    # Item location
     return_policy = Field()
     
     # Seller information
