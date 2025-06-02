@@ -11,7 +11,7 @@ DOWNLOAD_HANDLERS = {
 }
 PLAYWRIGHT_BROWSER_TYPE = "chromium"
 PLAYWRIGHT_LAUNCH_OPTIONS = {
-    "headless": False,
+    "headless": True,
     "timeout": 30 * 1000,  # 30 seconds
 }
 
